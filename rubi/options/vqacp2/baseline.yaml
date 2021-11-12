@@ -1,5 +1,5 @@
 exp:
-  dir: logs/vqacp2/baseline
+  dir: logs/vqacp2/vgqe_hyp
   resume: # last, best_[...], or empty (from scratch)
 dataset:
   import: rubi.datasets.factory
@@ -31,10 +31,19 @@ model:
     residual: False
     fusion:
       type: block
-      input_dims: [4800, 2048]
+      input_dims: [4096, 2048]
       output_dim: 2048
       mm_dim: 1000
-      chunks: 20
+      chunks: 15
+      rank: 15
+      dropout_input: 0.
+      dropout_pre_lin: 0.
+    fusion_attn:
+      type: block
+      input_dims: [ 512, 2048 ]
+      output_dim: 2048
+      mm_dim: 1000
+      chunks: 15
       rank: 15
       dropout_input: 0.
       dropout_pre_lin: 0.
@@ -54,8 +63,8 @@ optimizer:
   import: rubi.optimizers.factory
   name: Adam
   lr: 0.0003
-  gradual_warmup_steps: [0.5, 2.0, 7.0] #torch.linspace
-  lr_decay_epochs: [14, 24, 2] #range
+  gradual_warmup_steps: [0.5, 2.0, 13.0] #torch.linspace
+  lr_decay_epochs: [14, 22, 2] #range
   lr_decay_rate: .25
 engine:
   name: logger

@@ -62,6 +62,7 @@ class VQACP2(AbstractVQA):
         item['coord'] = item_rcnn['rois']
         item['norm_coord'] = item_rcnn['norm_rois']
         item['nb_regions'] = item['visual'].size(0)
+        item['cls_wid'] = item_rcnn['cls_wid']
         return item
 
     def load_image_features(self):

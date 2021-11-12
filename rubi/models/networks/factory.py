@@ -28,6 +28,7 @@ def factory(engine):
             aid_to_ans=dataset.aid_to_ans,
             ans_to_aid=dataset.ans_to_aid,
             fusion=opt['fusion'],
+            fusion_attn=opt['fusion_attn'],
             residual=opt['residual'],
         )
 
