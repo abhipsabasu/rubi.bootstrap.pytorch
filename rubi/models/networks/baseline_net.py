@@ -115,7 +115,7 @@ class BaselineNet(nn.Module):
         nb_regions = batch.get('nb_regions')
         bsize = v.shape[0]
         n_regions = v.shape[1]
-        v = F.normalize(v, dim=-1)
+
         out = {}
 
         q = self.process_question(q, l, v, cls_id)  # Shape: Batch*4800
@@ -146,7 +146,7 @@ class BaselineNet(nn.Module):
             q_att_linear0 = self.q_att_linear0
         if q_att_linear1 is None:
             q_att_linear1 = self.q_att_linear1
-
+        v = F.normalize(v, dim=-1)
         q_emb = txt_enc.embedding(q)  # Batch*Length*620
         #q_emb = F.normalize(q_emb, dim=-1)
         cls_id = cls_id.long()
