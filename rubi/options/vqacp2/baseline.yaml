@@ -41,7 +41,7 @@ model:
     fusion_attn:
       type: block
       input_dims: [ 512, 2048 ]
-      output_dim: 2048
+      output_dim: 512
       mm_dim: 1000
       chunks: 15
       rank: 15
