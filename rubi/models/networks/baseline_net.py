@@ -56,7 +56,7 @@ class BaselineNet(nn.Module):
             self.q_att_linear1 = nn.Linear(512, 2)
         #    self.q_att_linear2 = nn.Linear(620, 2048)
         #     self.q_att_linear3 = nn.Linear(100, 2048)
-        self.rnn = nn.GRU(512, 1024, num_layers=2, bidirectional=True, batch_first=True, dropout=0.2)
+        self.rnn = nn.GRU(620, 1024, num_layers=2, bidirectional=True, batch_first=True, dropout=0.2)
         self.fusion_module = block.factory_fusion(self.fusion)
         self.fusion_attn_module = block.factory_fusion(self.fusion_attn)
         self.dropout = nn.Dropout(0.2)
@@ -194,10 +194,11 @@ class BaselineNet(nn.Module):
         # #attn_out = attn_out.contiguous().view(q.shape[0] * q.shape[1], -1)
         #q_emb = self.Wt(q_emb)
         #q_emb = F.relu(q_emb)
-        q_emb = self.Wq(q_emb)
-        q_emb = self.dropout(q_emb)
+        #q_emb = self.Wq(q_emb)
+        #q_emb = self.dropout(q_emb)
         q_emb_attn = q_emb.contiguous().view(q.shape[0] * q.shape[1], -1)
         mm = self.process_fusion_attn(q_emb_attn, attn_out)
+        #mm = F.normalize(mm, dim=-1)
         mm = mm + q_emb
         q, hidden_states = self.rnn(mm)  # Shape : batch*length*2400
         # print(q.size(), torch.cat((hidden_states[-1], hidden_states[-2]), dim=1).size())
