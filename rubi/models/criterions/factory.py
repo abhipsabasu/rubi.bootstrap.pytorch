@@ -1,6 +1,7 @@
 from bootstrap.lib.options import Options
 from block.models.criterions.vqa_cross_entropy import VQACrossEntropyLoss
 from .rubi_criterion import RUBiCriterion
+from .contrastive_criterion import ContrastiveCriterion
 
 def factory(engine, mode):
     name = Options()['model.criterion.name']
@@ -16,6 +17,8 @@ def factory(engine, mode):
         criterion = RUBiCriterion(
             question_loss_weight=opt['question_loss_weight']
         )
+    elif name == 'contrastive_criterion':
+        criterion = ContrastiveCriterion()
     else:
         raise ValueError(name)
     return criterion

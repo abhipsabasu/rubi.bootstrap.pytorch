@@ -1,5 +1,5 @@
 exp:
-  dir: logs/vqacp2/vgqe_hyp
+  dir: logs/vqacp2/vgqe_contrastive
   resume: # last, best_[...], or empty (from scratch)
 dataset:
   import: rubi.datasets.factory
@@ -9,7 +9,7 @@ dataset:
   eval_split: val # or test
   proc_split: train # or trainval (preprocessing split, must be equal to train_split)
   nb_threads: 4
-  batch_size: 256
+  batch_size: 128
   nans: 3000
   minwcount: 0
   nlp: mcb
@@ -55,7 +55,7 @@ model:
         dimensions: [1024,1024,3000]
   criterion:
     import: rubi.models.criterions.factory
-    name: vqa_cross_entropy
+    name: contrastive_criterion
   metric:
     import: rubi.models.metrics.factory
     name: vqa_accuracies
@@ -63,7 +63,7 @@ optimizer:
   import: rubi.optimizers.factory
   name: Adam
   lr: 0.0003
-  gradual_warmup_steps: [0.5, 2, 13.0] #torch.linspace
+  gradual_warmup_steps: [0.5, 2.0, 13.0] #torch.linspace
   lr_decay_epochs: [14, 22, 2] #range
   lr_decay_rate: .25
 engine:

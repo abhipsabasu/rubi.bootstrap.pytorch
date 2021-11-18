@@ -1,5 +1,6 @@
 import torch
 
+
 def mask_softmax(x, lengths):#, dim=1)
     mask = torch.zeros_like(x).to(device=x.device, non_blocking=True)
     t_lengths = lengths[:,:,None].expand_as(mask)

@@ -3,18 +3,58 @@ import itertools
 import os
 import numpy as np
 import scipy
+import re
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
 from bootstrap.lib.options import Options
 from bootstrap.lib.logger import Logger
 import block
 from block.models.networks.vqa_net import factory_text_enc
 from block.models.networks.mlp import MLP
 
+
 from .utils import mask_softmax
 
 torch.set_printoptions(profile="full")
+
+
+def gelu(x):
+    """Implementation of the gelu activation function.
+        For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
+        0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+        Also see https://arxiv.org/abs/1606.08415
+    """
+    return x * 0.5 * (1.0 + torch.erf(x / np.sqrt(2.0)))
+
+
+class GeLU(nn.Module):
+    """Implementation of the gelu activation function.
+        For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
+        0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+        Also see https://arxiv.org/abs/1606.08415
+    """
+    def __init__(self):
+        super(GeLU, self).__init__()
+
+    def forward(self, x):
+        return gelu(x)
+
+class BertLayerNorm(nn.Module):
+    def __init__(self, hidden_size, eps=1e-12):
+        """Construct a layernorm module in the TF style (epsilon inside the square root).
+        """
+        super(BertLayerNorm, self).__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.bias = nn.Parameter(torch.zeros(hidden_size))
+        self.variance_epsilon = eps
+
+    def forward(self, x):
+        u = x.mean(-1, keepdim=True)
+        s = (x - u).pow(2).mean(-1, keepdim=True)
+        x = (x - u) / torch.sqrt(s + self.variance_epsilon)
+        return self.weight * x + self.bias
 
 
 class BaselineNet(nn.Module):
@@ -30,7 +70,8 @@ class BaselineNet(nn.Module):
                  ans_to_aid={},
                  fusion={},
                  residual=False,
-                 fusion_attn={}
+                 fusion_attn={},
+                 ans_emb={}
                  ):
         super().__init__()
         self.self_q_att = self_q_att
@@ -44,12 +85,26 @@ class BaselineNet(nn.Module):
         self.fusion = fusion
         self.fusion_attn = fusion_attn
         self.residual = residual
-
+        self.ans_emb = torch.stack(list(ans_emb.values()))
         # Modules
         #self.Wt = nn.Linear(620, 620)
-        # self.W = nn.Linear(2048, 2048)
-        # self.wa = nn.Linear(2048, 1)
-        self.Wq = nn.Linear(620, 512)
+        hid_dim = 1024
+
+        self.logit_fc_emb = nn.Sequential(
+            nn.Linear(2048, hid_dim * 2),
+            GeLU(),
+            BertLayerNorm(hid_dim * 2, eps=1e-12),
+            nn.Linear(hid_dim * 2, 620)
+        )
+        self.emb_proj = nn.Sequential(
+            nn.Linear(620, hid_dim),
+            GeLU(),
+            BertLayerNorm(hid_dim, eps=1e-12),
+            nn.Linear(hid_dim, 620)
+        )
+        #self.wa = nn.Linear(2048, 1)
+        #self.Wq = nn.Linear(620, 512)
+
         self.txt_enc = self.get_text_enc(self.wid_to_word, txt_enc)
         if self.self_q_att:
             self.q_att_linear0 = nn.Linear(2048, 512)
@@ -58,8 +113,8 @@ class BaselineNet(nn.Module):
         #     self.q_att_linear3 = nn.Linear(100, 2048)
         self.rnn = nn.GRU(620, 1024, num_layers=2, bidirectional=True, batch_first=True, dropout=0.2)
         self.fusion_module = block.factory_fusion(self.fusion)
-        self.fusion_attn_module = block.factory_fusion(self.fusion_attn)
-        self.dropout = nn.Dropout(0.2)
+        #self.fusion_attn_module = block.factory_fusion(self.fusion_attn)
+        #self.dropout = nn.Dropout(0.2)
         if self.classif['mlp']['dimensions'][-1] != len(self.aid_to_ans):
             Logger()(f"Warning, the classif_mm output dimension ({self.classif['mlp']['dimensions'][-1]})"
                      f"doesn't match the number of answers ({len(self.aid_to_ans)}). Modifying the output dimension.")
@@ -131,12 +186,16 @@ class BaselineNet(nn.Module):
             mm, mm_argmax = torch.max(mm, 1)
         elif self.agg['type'] == 'mean':
             mm = mm.mean(1)
-
         out['mm'] = mm
         out['mm_argmax'] = mm_argmax
 
         logits = self.classif_module(mm)
         out['logits'] = logits
+        _, pred = out[f'logits'].data.max(1)
+        pred.squeeze_()
+        out['mm_proj'] = self.logit_fc_emb(mm)
+        out['ans_embedding'] = self.emb_proj(Variable(self.ans_emb))
+        out.update(self.process_answers(out))
         return out
 
     def process_question(self, q, l, v, cls_id, txt_enc=None, q_att_linear0=None, q_att_linear1=None):
@@ -146,61 +205,31 @@ class BaselineNet(nn.Module):
             q_att_linear0 = self.q_att_linear0
         if q_att_linear1 is None:
             q_att_linear1 = self.q_att_linear1
-        v = F.normalize(v, dim=-1)
+        #v = F.normalize(v, dim=-1)
         q_emb = txt_enc.embedding(q)  # Batch*Length*620
-        #q_emb = F.normalize(q_emb, dim=-1)
-        cls_id = cls_id.long()
-        cls_id_exp = cls_id.contiguous().view(cls_id.shape[0] * cls_id.shape[1], -1)
-        # print(cls_id_exp[0])
-        cls_emb = txt_enc.embedding(cls_id_exp)
-        # print(cls_emb)
-        cls_emb = cls_emb.view(cls_id.shape[0], cls_id.shape[1], 2, -1)
-        # print(cls_emb[0, 0])
-        cls_emb = cls_emb.sum(2)  # Batch*36*620
-        attn_scores = torch.bmm(q_emb, torch.transpose(cls_emb, 1, 2))
-        attn_scores = torch.softmax(attn_scores, dim=2)
-        attn_out = torch.bmm(attn_scores, v)
-        #attn_out = self.dropout(attn_out)
-        # print(q_emb[0, 2])
 
-        # #q1 = self.q_att_linear2(q_emb)
-        # #q1 = self.q_att_linear3(q1)  # Shape: batch*length*2048
-        # cls_unsqueeze = torch.unsqueeze(cls_emb, dim=1)
-        # cls_expand = cls_unsqueeze.expand(-1, q.shape[1], -1, -1)
-        # q_unsqueeze = torch.unsqueeze(q_emb, dim=2)
-        # q_expand = q_unsqueeze.expand(-1, -1, v.shape[1], -1)
-        # attn_scores = torch.multiply(cls_expand, q_expand)
-        # #attn_scores = torch.transpose(attn_scores, 2, 3)
-        # attn_scores = self.W(attn_scores)
-        # attn_scores = self.wa(attn_scores)
+        # cls_id = cls_id.long()
+        # cls_id_exp = cls_id.contiguous().view(cls_id.shape[0] * cls_id.shape[1], -1)
+        # # print(cls_id_exp[0])
+        # cls_emb = txt_enc.embedding(cls_id_exp)
+        # # print(cls_emb)
+        # cls_emb = cls_emb.view(cls_id.shape[0], cls_id.shape[1], 2, -1)
+        # # print(cls_emb[0, 0])
+        # cls_emb = cls_emb.sum(2)  # Batch*36*620
+        # attn_scores = torch.bmm(q_emb, torch.transpose(cls_emb, 1, 2))
         # attn_scores = torch.softmax(attn_scores, dim=2)
-        # cls_trans = torch.transpose(cls_emb, 1, 2)
+        # attn_out = torch.bmm(attn_scores, v)
         #
-        # attn_scores = torch.bmm(q_emb, cls_trans)
-        # attn_scores = torch.softmax(attn_scores, dim=2)  # Shape: batch*length*36
-        # #print(attn_scores[0, 5], "AYABA")'''
-        # v_unsqueeze = torch.unsqueeze(v, dim=1)
-        # v_expand = v_unsqueeze.expand(-1, q.shape[1], -1, -1)
-        # q_unsqueeze = torch.unsqueeze(q_emb, dim=2)
-        # q_expand = q_unsqueeze.expand(-1, -1, v.shape[1], -1)
-        # attn_scores = torch.multiply(v_expand, q_expand)
-        # attn_scores = self.W(attn_scores)
-        # attn_scores = self.wa(attn_scores)
-        # attn_scores = torch.softmax(attn_scores, dim=2)
-        # #attn_scores = attn_scores.unsqueeze(-1)
-        # attn_scores = attn_scores.expand_as(v_expand)
-        # attn_out = attn_scores * v_expand
-        # attn_out = attn_out.sum(2) #Shape: batch*length*2048
-        # #attn_out = attn_out.contiguous().view(q.shape[0] * q.shape[1], -1)
-        #q_emb = self.Wt(q_emb)
-        #q_emb = F.relu(q_emb)
-        #q_emb = self.Wq(q_emb)
-        #q_emb = self.dropout(q_emb)
-        q_emb_attn = q_emb.contiguous().view(q.shape[0] * q.shape[1], -1)
-        mm = self.process_fusion_attn(q_emb_attn, attn_out)
-        #mm = F.normalize(mm, dim=-1)
-        mm = mm + q_emb
-        q, hidden_states = self.rnn(mm)  # Shape : batch*length*2400
+        #
+        # #q_emb = self.Wt(q_emb)
+        # #q_emb = F.relu(q_emb)
+        # #q_emb = self.Wq(q_emb)
+        # #q_emb = self.dropout(q_emb)
+        # q_emb_attn = q_emb.contiguous().view(q.shape[0] * q.shape[1], -1)
+        # mm = self.process_fusion_attn(q_emb_attn, attn_out)
+        # #mm = F.normalize(mm, dim=-1)
+        # mm = mm + q_emb
+        q, hidden_states = self.rnn(q_emb)  # Shape : batch*length*2400
         # print(q.size(), torch.cat((hidden_states[-1], hidden_states[-2]), dim=1).size())
         # return (torch.cat((hidden_states[-1], hidden_states[-2]), dim=1))
         if self.self_q_att:
@@ -232,10 +261,12 @@ class BaselineNet(nn.Module):
         #q = self.dropout(q)
         return q
 
+
     def process_answers(self, out, key=''):
         batch_size = out[f'logits{key}'].shape[0]
         _, pred = out[f'logits{key}'].data.max(1)
         pred.squeeze_()
+
         if batch_size != 1:
             out[f'answers{key}'] = [self.aid_to_ans[pred[i].item()] for i in range(batch_size)]
             out[f'answer_ids{key}'] = [pred[i].item() for i in range(batch_size)]
