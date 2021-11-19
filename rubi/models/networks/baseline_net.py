@@ -149,6 +149,7 @@ class BaselineNet(nn.Module):
 
         mm = mm.contiguous().view(bsize * n_regions, -1)
         mm = self.fusion_module([q, mm])
+        #c = batch['norm_coord']
         mm = mm.view(bsize, n_regions, -1)
         return mm
 
@@ -166,7 +167,6 @@ class BaselineNet(nn.Module):
         q = batch['question']
         l = batch['lengths'].data
         cls_id = batch['cls_wid']
-        c = batch['norm_coord']
         nb_regions = batch.get('nb_regions')
         bsize = v.shape[0]
         n_regions = v.shape[1]
