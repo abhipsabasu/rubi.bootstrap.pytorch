@@ -70,7 +70,7 @@ engine:
   name: logger
   debug: False
   print_freq: 10
-  nb_epochs: 22
+  nb_epochs: 30
   saving_criteria:
   - eval_epoch.accuracy_top1:max
 misc:

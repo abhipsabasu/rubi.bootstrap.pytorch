@@ -89,7 +89,12 @@ class BaselineNet(nn.Module):
         # Modules
         #self.Wt = nn.Linear(620, 620)
         hid_dim = 1024
-
+        self.obj_fc_emb = nn.Sequential(
+            nn.Linear(2048, hid_dim * 2),
+            GeLU(),
+            BertLayerNorm(hid_dim * 2, eps=1e-12),
+            nn.Linear(hid_dim * 2, 2048)
+        )
         self.logit_fc_emb = nn.Sequential(
             nn.Linear(2048, hid_dim * 2),
             GeLU(),
@@ -113,8 +118,8 @@ class BaselineNet(nn.Module):
         #     self.q_att_linear3 = nn.Linear(100, 2048)
         self.rnn = nn.GRU(620, 1024, num_layers=2, bidirectional=True, batch_first=True, dropout=0.2)
         self.fusion_module = block.factory_fusion(self.fusion)
-        #self.fusion_attn_module = block.factory_fusion(self.fusion_attn)
-        #self.dropout = nn.Dropout(0.2)
+        # self.fusion_attn_module = block.factory_fusion(self.fusion_attn)
+        # self.dropout = nn.Dropout(0.2)
         if self.classif['mlp']['dimensions'][-1] != len(self.aid_to_ans):
             Logger()(f"Warning, the classif_mm output dimension ({self.classif['mlp']['dimensions'][-1]})"
                      f"doesn't match the number of answers ({len(self.aid_to_ans)}). Modifying the output dimension.")
@@ -164,7 +169,9 @@ class BaselineNet(nn.Module):
 
     def forward(self, batch):
         v = batch['visual']  # Shape: Batch*36*2048
+        # v = torch.randn(v.size()).to('cuda:0')
         q = batch['question']
+        # q = torch.zeros(q.size()).long().to('cuda:0')
         l = batch['lengths'].data
         cls_id = batch['cls_wid']
         nb_regions = batch.get('nb_regions')
@@ -188,6 +195,8 @@ class BaselineNet(nn.Module):
             mm = mm.mean(1)
         out['mm'] = mm
         out['mm_argmax'] = mm_argmax
+        v_max, v_argmax = torch.max(v, 1)
+        out['v_max'] = self.obj_fc_emb(v_max)
 
         logits = self.classif_module(mm)
         out['logits'] = logits
@@ -205,7 +214,7 @@ class BaselineNet(nn.Module):
             q_att_linear0 = self.q_att_linear0
         if q_att_linear1 is None:
             q_att_linear1 = self.q_att_linear1
-        #v = F.normalize(v, dim=-1)
+        v = F.normalize(v, dim=-1)
         q_emb = txt_enc.embedding(q)  # Batch*Length*620
 
         # cls_id = cls_id.long()

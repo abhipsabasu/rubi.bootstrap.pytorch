@@ -36,6 +36,9 @@ class ContrastiveCriterion(nn.Module):
         loss_nce = loss_nce.mean()
         out = self.cross_entropy(net_out, batch)
         #loss_nce=0
-        alpha=0.3
-        out['loss'] = alpha*loss_nce + (1-alpha)*out['loss']
+        # alpha=0.3
+        obj_dist = self.cos(net_out['v_max'], net_out['mm'])
+        obj_loss = 1 - obj_dist
+        obj_loss = obj_loss.mean()
+        out['loss'] = (loss_nce + out['loss'] + obj_loss) / 3.0
         return out
