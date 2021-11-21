@@ -118,7 +118,7 @@ class BaselineNet(nn.Module):
         #     self.q_att_linear3 = nn.Linear(100, 2048)
         self.rnn = nn.GRU(620, 1024, num_layers=2, bidirectional=True, batch_first=True, dropout=0.2)
         self.fusion_module = block.factory_fusion(self.fusion)
-        # self.fusion_attn_module = block.factory_fusion(self.fusion_attn)
+        self.fusion_attn_module = block.factory_fusion(self.fusion_attn)
         # self.dropout = nn.Dropout(0.2)
         if self.classif['mlp']['dimensions'][-1] != len(self.aid_to_ans):
             Logger()(f"Warning, the classif_mm output dimension ({self.classif['mlp']['dimensions'][-1]})"
@@ -214,31 +214,31 @@ class BaselineNet(nn.Module):
             q_att_linear0 = self.q_att_linear0
         if q_att_linear1 is None:
             q_att_linear1 = self.q_att_linear1
-        v = F.normalize(v, dim=-1)
+        #v = F.normalize(v, dim=-1)
         q_emb = txt_enc.embedding(q)  # Batch*Length*620
 
-        # cls_id = cls_id.long()
-        # cls_id_exp = cls_id.contiguous().view(cls_id.shape[0] * cls_id.shape[1], -1)
-        # # print(cls_id_exp[0])
-        # cls_emb = txt_enc.embedding(cls_id_exp)
-        # # print(cls_emb)
-        # cls_emb = cls_emb.view(cls_id.shape[0], cls_id.shape[1], 2, -1)
-        # # print(cls_emb[0, 0])
-        # cls_emb = cls_emb.sum(2)  # Batch*36*620
-        # attn_scores = torch.bmm(q_emb, torch.transpose(cls_emb, 1, 2))
-        # attn_scores = torch.softmax(attn_scores, dim=2)
-        # attn_out = torch.bmm(attn_scores, v)
-        #
-        #
-        # #q_emb = self.Wt(q_emb)
-        # #q_emb = F.relu(q_emb)
-        # #q_emb = self.Wq(q_emb)
-        # #q_emb = self.dropout(q_emb)
-        # q_emb_attn = q_emb.contiguous().view(q.shape[0] * q.shape[1], -1)
-        # mm = self.process_fusion_attn(q_emb_attn, attn_out)
-        # #mm = F.normalize(mm, dim=-1)
-        # mm = mm + q_emb
-        q, hidden_states = self.rnn(q_emb)  # Shape : batch*length*2400
+        cls_id = cls_id.long()
+        cls_id_exp = cls_id.contiguous().view(cls_id.shape[0] * cls_id.shape[1], -1)
+        # print(cls_id_exp[0])
+        cls_emb = txt_enc.embedding(cls_id_exp)
+        # print(cls_emb)
+        cls_emb = cls_emb.view(cls_id.shape[0], cls_id.shape[1], 2, -1)
+        # print(cls_emb[0, 0])
+        cls_emb = cls_emb.sum(2)  # Batch*36*620
+        attn_scores = torch.bmm(q_emb, torch.transpose(cls_emb, 1, 2))
+        attn_scores = torch.softmax(attn_scores, dim=2)
+        attn_out = torch.bmm(attn_scores, v)
+
+
+        #q_emb = self.Wt(q_emb)
+        #q_emb = F.relu(q_emb)
+        #q_emb = self.Wq(q_emb)
+        #q_emb = self.dropout(q_emb)
+        q_emb_attn = q_emb.contiguous().view(q.shape[0] * q.shape[1], -1)
+        mm = self.process_fusion_attn(q_emb_attn, attn_out)
+        #mm = F.normalize(mm, dim=-1)
+        mm = mm + q_emb
+        q, hidden_states = self.rnn(mm)  # Shape : batch*length*2400
         # print(q.size(), torch.cat((hidden_states[-1], hidden_states[-2]), dim=1).size())
         # return (torch.cat((hidden_states[-1], hidden_states[-2]), dim=1))
         if self.self_q_att:
