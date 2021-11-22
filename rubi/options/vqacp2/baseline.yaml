@@ -63,8 +63,8 @@ optimizer:
   import: rubi.optimizers.factory
   name: Adam
   lr: 0.0003
-  gradual_warmup_steps: [0.5, 2.0, 13.0] #torch.linspace
-  lr_decay_epochs: [14, 22, 2] #range
+  gradual_warmup_steps: [0.5, 2.0, 20.0] #torch.linspace
+  lr_decay_epochs: [20, 30, 2] #range
   lr_decay_rate: .25
 engine:
   name: logger
