@@ -1,5 +1,5 @@
 exp:
-  dir: logs/vqacp2/rubi
+  dir: logs/vqacp2/rubi_vgqe
   resume: # last, best_[...], or empty (from scratch)
 dataset:
   import: rubi.datasets.factory
@@ -9,7 +9,7 @@ dataset:
   eval_split: val # or test
   proc_split: train # or trainval (preprocessing split, must be equal to train_split)
   nb_threads: 4
-  batch_size: 256
+  batch_size: 128
   nans: 3000
   minwcount: 0
   nlp: mcb
@@ -22,7 +22,7 @@ model:
     name: rubi
     rubi_params:
       mlp_q:
-        input_dim: 4800
+        input_dim: 4096
         dimensions: [1024,1024,3000]
     txt_enc:
       name: skipthoughts
@@ -34,10 +34,19 @@ model:
     residual: False
     fusion:
       type: block
-      input_dims: [4800, 2048]
+      input_dims: [4096, 2048]
       output_dim: 2048
       mm_dim: 1000
-      chunks: 20
+      chunks: 15
+      rank: 15
+      dropout_input: 0.
+      dropout_pre_lin: 0.
+    fusion_attn:
+      type: block
+      input_dims: [ 620, 2048 ]
+      output_dim: 620
+      mm_dim: 1000
+      chunks: 15
       rank: 15
       dropout_input: 0.
       dropout_pre_lin: 0.
@@ -58,15 +67,15 @@ optimizer:
   import: rubi.optimizers.factory
   name: Adam
   lr: 0.0003
-  gradual_warmup_steps: [0.5, 2.0, 7.0] #torch.linspace
-  gradual_warmup_steps_mm: [0.5, 2.0, 7.0] #torch.linspace
-  lr_decay_epochs: [14, 24, 2] #range
+  gradual_warmup_steps: [0.5, 2.0, 20.0] #torch.linspace
+  gradual_warmup_steps_mm: [0.5, 2.0, 20.0] #torch.linspace
+  lr_decay_epochs: [20, 30, 2] #range
   lr_decay_rate: .25
 engine:
   name: logger
   debug: False
   print_freq: 10
-  nb_epochs: 22
+  nb_epochs: 30
   saving_criteria:
   - eval_epoch.accuracy_top1:max
   - eval_epoch.accuracy_rubi_top1:max

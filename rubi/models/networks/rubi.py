@@ -26,10 +26,11 @@ class RUBiNet(nn.Module):
         out = {}
         # model prediction
         net_out = self.net(batch)
+        out.update(net_out)
         logits = net_out['logits']
 
         q_embedding = net_out['q_emb']  # N * q_emb
-        q_embedding = grad_mul_const(q_embedding, 0.0) # don't backpropagate through question encoder
+        # q_embedding = grad_mul_const(q_embedding, 0.0) # don't backpropagate through question encoder
         q_pred = self.c_1(q_embedding)
         fusion_pred = logits * torch.sigmoid(q_pred)
 
@@ -41,6 +42,7 @@ class RUBiNet(nn.Module):
         out['logits'] = net_out['logits']
         out['logits_rubi'] = fusion_pred
         out['logits_q'] = q_out
+        out.update(self.process_answers(out))
         return out
 
     def process_answers(self, out, key=''):
